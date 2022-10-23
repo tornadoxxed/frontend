@@ -9,10 +9,10 @@ export default {
     };
   },
   created() {
-    this.getList();
+    this.getDoxxed();
   },
   methods: {
-    async getList() {
+    async getDoxxed() {
       const executeResponse = await fetch(`${API_ENDPOINT}/lookup`, {
         method: "GET",
         headers: {

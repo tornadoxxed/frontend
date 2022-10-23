@@ -1,14 +1,8 @@
-<script setup></script>
-
 <script>
-import doxxed from "../assets/doxxed.json";
+const API_ENDPOINT = import.meta.env.VITE_API_ENDPOINT;
+
 import Web3Modal from "web3modal";
 import Web3 from "web3";
-
-const DUNE_KEY = import.meta.env.VITE_DUNE_KEY;
-
-const QUERY_WORKING = ["QUERY_STATE_PENDING", "QUERY_STATE_EXECUTING"];
-const QUERY_DONE = "QUERY_STATE_COMPLETED";
 
 export default {
   created() {
@@ -22,6 +16,7 @@ export default {
     if (this.web3Modal.cachedProvider) {
       this.connect();
     }
+    this.getDoxxed();
   },
   methods: {
     async connect() {
@@ -34,6 +29,10 @@ export default {
       provider.on("connect", () => {
         this.accountChanged();
         this.connected = true;
+        window.goatcounter.count({
+          path: "wallet-connected",
+          event: true,
+        });
       });
 
       // Subscribe to provider disconnection
@@ -51,7 +50,7 @@ export default {
         this.web3.eth.getAccounts().then((accounts) => {
           const [coinbase] = accounts;
           this.address = coinbase;
-          this.getDuneQuery(1279881, { entry: this.address });
+          this.search(coinbase);
         });
       }
     },
@@ -61,69 +60,26 @@ export default {
       this.address = "";
       this.tcUses = null;
     },
-    search() {
+    searchSearchString() {
       if (this.searchString !== "") {
         this.address = "";
-        this.getDuneQuery(1279881, { entry: this.searchString });
+
+        this.search(this.searchString);
       }
     },
-    async getDuneQuery(queryId, queryParameters) {
+    async search(entry) {
+      window.goatcounter.count({
+        path: "search",
+        event: true,
+      });
       this.loading = true;
-      this.tcUses = null;
-      const executionId = await this.executeDuneQuery(queryId, queryParameters);
-      await this.waitForDuneQuery(executionId);
-    },
-    async executeDuneQuery(queryId, queryParameters) {
-      const executeResponse = await fetch(
-        `https://api.dune.com/api/v1/query/${queryId}/execute`,
-        {
-          method: "POST",
-          headers: {
-            Accept: "application/json",
-            "Content-Type": "application/json",
-            "x-dune-api-key": DUNE_KEY,
-          },
-          body: JSON.stringify({
-            query_parameters: queryParameters,
-          }),
-        }
-      );
-      const execute = await executeResponse.json();
-      const executionId = execute.execution_id;
-      return executionId;
-    },
-    async waitForDuneQuery(executionId) {
-      fetch(`https://api.dune.com/api/v1/execution/${executionId}/status`, {
+      const response = await fetch(`${API_ENDPOINT}/search/${entry}`, {
+        method: "GET",
         headers: {
           Accept: "application/json",
           "Content-Type": "application/json",
-          "x-dune-api-key": DUNE_KEY,
         },
-      }).then((response) => {
-        response.json().then((waiting) => {
-          const state = waiting.state;
-
-          if (QUERY_WORKING.includes(state)) {
-            setTimeout(this.waitForDuneQuery, 3000, executionId);
-          } else if (state != QUERY_DONE) {
-            console.error(`Error: Query state is ${state}`);
-          } else {
-            this.getDuneQueryData(executionId);
-          }
-        });
       });
-    },
-    async getDuneQueryData(executionId) {
-      const response = await fetch(
-        `https://api.dune.com/api/v1/execution/${executionId}/results`,
-        {
-          headers: {
-            Accept: "application/json",
-            "Content-Type": "application/json",
-            "x-dune-api-key": DUNE_KEY,
-          },
-        }
-      );
       const responseJ = await response.json();
 
       this.tcUses = responseJ.result.rows;
@@ -131,12 +87,22 @@ export default {
 
       this.address = this.tcUses[0].address;
     },
+    async getDoxxed() {
+      const executeResponse = await fetch(`${API_ENDPOINT}/lookup`, {
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+      });
+      this.doxxed = await executeResponse.json();
+    },
   },
 
   data() {
     return {
       searchString: "",
-      doxxed: doxxed,
+      doxxed: [],
       web3Modal: {},
       connected: false,
       web3: {},
@@ -171,10 +137,10 @@ export default {
       <input
         class="address"
         v-model="searchString"
-        v-on:keyup.enter="search"
+        v-on:keyup.enter="searchSearchString"
         placeholder="Address or ENS"
       />
-      <button raised @click="search">Search</button>
+      <button raised @click="searchSearchString">Search</button>
     </span>
     <span v-else>{{ address }}</span>
     <p v-if="loading">LOADING...</p>
